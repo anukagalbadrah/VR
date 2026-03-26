@@ -775,7 +775,7 @@ function animate() {
     camera.position.copy(ch.standPos);
     camera.lookAt(ch.standLook.x + Math.sin(theta) * 3, ch.standLook.y, ch.standLook.z + Math.cos(theta));
   }
-
+  renderer.xr.enabled = true;
   renderer.render(scene, camera);
 }
 animate();
