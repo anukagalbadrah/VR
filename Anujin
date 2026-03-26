@@ -1,0 +1,219 @@
+<div style="width:100%;height:600px;position:relative;background:#1a1a2e;border-radius:var(--border-radius-lg);overflow:hidden;">
+<canvas id="c" style="width:100%;height:100%;display:block;"></canvas>
+<div id="info" style="position:absolute;top:12px;left:12px;color:#fff;font-size:13px;background:rgba(0,0,0,0.5);padding:8px 12px;border-radius:8px;line-height:1.8;">
+  🖱 Хулгана: эргүүлэх<br>🔍 Scroll: томруулах/жижигрүүлэх
+</div>
+<div id="labels" style="position:absolute;top:12px;right:12px;color:#fff;font-size:12px;background:rgba(0,0,0,0.5);padding:8px 12px;border-radius:8px;line-height:2;">
+  <span style="color:#60a5fa;">■</span> Телевиз<br>
+  <span style="color:#f59e0b;">■</span> Хаалга<br>
+  <span style="color:#fef08a;">■</span> Таазны гэрэл
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setSize(canvas.parentElement.clientWidth, canvas.parentElement.clientHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+scene.fog = new THREE.Fog(0x1a1a2e, 20, 40);
+
+const camera = new THREE.PerspectiveCamera(60, canvas.parentElement.clientWidth / canvas.parentElement.clientHeight, 0.1, 100);
+camera.position.set(0, 5, 10);
+camera.lookAt(0, 1, 0);
+
+// Ambient
+const ambient = new THREE.AmbientLight(0xffffff, 0.3);
+scene.add(ambient);
+
+// ===== ӨРӨӨ =====
+const roomW = 10, roomH = 5, roomD = 10;
+
+function makeMat(color, rough=0.8, metal=0) {
+  return new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal });
+}
+
+// Шал
+const floor = new THREE.Mesh(
+  new THREE.PlaneGeometry(roomW, roomD),
+  makeMat(0x8b7355, 0.9)
+);
+floor.rotation.x = -Math.PI/2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+// Шал дээрх хавтан зураас
+for(let i=-4;i<=4;i++){
+  const g=new THREE.Mesh(new THREE.PlaneGeometry(0.02,roomD),new THREE.MeshStandardMaterial({color:0x6b5535}));
+  g.rotation.x=-Math.PI/2; g.position.set(i,0.001,0); scene.add(g);
+}
+for(let i=-4;i<=4;i++){
+  const g=new THREE.Mesh(new THREE.PlaneGeometry(roomW,0.02),new THREE.MeshStandardMaterial({color:0x6b5535}));
+  g.rotation.x=-Math.PI/2; g.position.set(0,0.001,i); scene.add(g);
+}
+
+// Хана - арын
+const wallMat = makeMat(0xd4c9b0, 0.9);
+const wallB = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomH), wallMat);
+wallB.position.set(0, roomH/2, -roomD/2);
+wallB.receiveShadow = true;
+scene.add(wallB);
+
+// Хана - урдаа (телевиз байрлах)
+const wallF = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomH), wallMat.clone());
+wallF.rotation.y = Math.PI;
+wallF.position.set(0, roomH/2, roomD/2);
+wallF.receiveShadow = true;
+scene.add(wallF);
+
+// Хана - зүүн (хаалга байрлах)
+const wallL = new THREE.Mesh(new THREE.PlaneGeometry(roomD, roomH), wallMat.clone());
+wallL.rotation.y = Math.PI/2;
+wallL.position.set(-roomW/2, roomH/2, 0);
+wallL.receiveShadow = true;
+scene.add(wallL);
+
+// Хана - баруун
+const wallR = new THREE.Mesh(new THREE.PlaneGeometry(roomD, roomH), wallMat.clone());
+wallR.rotation.y = -Math.PI/2;
+wallR.position.set(roomW/2, roomH/2, 0);
+wallR.receiveShadow = true;
+scene.add(wallR);
+
+// Тааз
+const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomD), makeMat(0xf0ece0, 0.9));
+ceiling.rotation.x = Math.PI/2;
+ceiling.position.set(0, roomH, 0);
+ceiling.receiveShadow = true;
+scene.add(ceiling);
+
+// ===== ШИРЭЭ + САНДАЛ (сурагчийн) =====
+function addDesk(x, z) {
+  const deskMat = makeMat(0x8B6914, 0.7);
+  const legMat = makeMat(0x333333, 0.5, 0.3);
+
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.05, 0.6), deskMat);
+  top.position.set(x, 0.75, z);
+  top.castShadow = top.receiveShadow = true;
+  scene.add(top);
+
+  [[0.4,0.4],[0.4,-0.4],[-0.4,0.4],[-0.4,-0.4]].forEach(([dx,dz])=>{
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05,0.75,0.05), legMat);
+    leg.position.set(x+dx, 0.375, z+dz);
+    leg.castShadow = true;
+    scene.add(leg);
+  });
+
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.04,0.45), deskMat);
+  seat.position.set(x, 0.48, z+0.55);
+  seat.castShadow = seat.receiveShadow = true;
+  scene.add(seat);
+
+  const back = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.4,0.04), deskMat);
+  back.position.set(x, 0.7, z+0.77);
+  back.castShadow = true;
+  scene.add(back);
+
+  [[0.2,-0.2],[-0.2,-0.2]].forEach(([dx,dz])=>{
+    const sl = new THREE.Mesh(new THREE.BoxGeometry(0.04,0.48,0.04), legMat);
+    sl.position.set(x+dx, 0.24, z+0.55+dz);
+    sl.castShadow = true;
+    scene.add(sl);
+  });
+}
+
+[[-2,1],[-2,-1],[-2,-3],[0,1],[0,-1],[0,-3],[2,1],[2,-1],[2,-3]].forEach(([x,z])=>addDesk(x,z));
+
+// ===== БАГШИЙН ШИРЭЭ =====
+const tDeskMat = makeMat(0x6B4C11, 0.6);
+const tDesk = new THREE.Mesh(new THREE.BoxGeometry(2,0.07,0.8), tDeskMat);
+tDesk.position.set(-3, 0.78, 3.5);
+tDesk.castShadow = tDesk.receiveShadow = true;
+scene.add(tDesk);
+[[0.8,0.3],[-0.8,0.3],[0.8,-0.3],[-0.8,-0.3]].forEach(([dx,dz])=>{
+  const l=new THREE.Mesh(new THREE.BoxGeometry(0.07,0.78,0.07),makeMat(0x222222,0.4,0.4));
+  l.position.set(-3+dx,0.39,3.5+dz); l.castShadow=true; scene.add(l);
+});
+
+// ===== 📺 ТЕЛЕВИЗ (урд хана дээр) =====
+const tvGroup = new THREE.Group();
+
+const tvFrame = new THREE.Mesh(
+  new THREE.BoxGeometry(2.4, 1.4, 0.12),
+  makeMat(0x111111, 0.2, 0.5)
+);
+tvGroup.add(tvFrame);
+
+const tvScreen = new THREE.Mesh(
+  new THREE.BoxGeometry(2.2, 1.2, 0.02),
+  new THREE.MeshStandardMaterial({ color: 0x1a3a6e, roughness: 0.1, emissive: 0x1a3a6e, emissiveIntensity: 0.5 })
+);
+tvScreen.position.z = -0.04;
+tvGroup.add(tvScreen);
+
+// TV дэлгэцний агуулга симуляц
+const tvContent = new THREE.Mesh(
+  new THREE.PlaneGeometry(2.1, 1.1),
+  new THREE.MeshStandardMaterial({ color: 0x2563eb, emissive: 0x1d4ed8, emissiveIntensity: 0.8 })
+);
+tvContent.position.z = -0.045;
+tvGroup.add(tvContent);
+
+// TV тулгуур
+const tvStand = new THREE.Mesh(new THREE.BoxGeometry(0.15,0.3,0.15), makeMat(0x1a1a1a,0.3,0.5));
+tvStand.position.y = -0.85;
+tvGroup.add(tvStand);
+
+const tvBase = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.05,0.25), makeMat(0x1a1a1a,0.3,0.5));
+tvBase.position.y = -1.0;
+tvGroup.add(tvBase);
+
+tvGroup.position.set(1, 2.2, roomD/2 - 0.07);
+tvGroup.rotation.y = Math.PI;
+scene.add(tvGroup);
+
+// TV гэрэл
+const tvLight = new THREE.PointLight(0x2563eb, 1.5, 4);
+tvLight.position.set(1, 2.2, roomD/2 - 0.5);
+scene.add(tvLight);
+
+// ===== 🚪 ХААЛГА (зүүн хана) =====
+const doorGroup = new THREE.Group();
+
+// Хаалганы хүрээ
+const frameMat = makeMat(0x5c3d1e, 0.6);
+[
+  [0.05, 1.05, 0, 0.1, 2.1, 0.15],
+  [-0.9, 1.05, 0, 0.1, 2.1, 0.15],
+  [-0.425, 2.15, 0, 0.95, 0.1, 0.15]
+].forEach(([x,y,z,w,h,d])=>{
+  const f=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),frameMat);
+  f.position.set(x,y,z); f.castShadow=true; doorGroup.add(f);
+});
+
+// Хаалганы хавтан
+const doorPanel = new THREE.Mesh(
+  new THREE.BoxGeometry(0.85, 2.0, 0.07),
+  makeMat(0x8B5E3C, 0.5)
+);
+doorPanel.position.set(-0.425, 1.0, 0);
+doorPanel.castShadow = true;
+doorGroup.add(doorPanel);
+
+// Хаалганы чимэглэл шугам
+const deco1 = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.8,0.02), makeMat(0x7a5230,0.5));
+deco1.position.set(-0.425, 1.5, 0.045);
+doorGroup.add(deco1);
+const deco2 = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.8,0.02), makeMat(0x7a5230,0.5));
+deco2.position.set(-0.425, 0.5, 0.045);
+doorGroup.add(deco2);
+
+// Бариул
+const handleMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.1, metalness: 0.9 });
+const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.12, 8), handleMat);
+handle.rotation.x = Math.
