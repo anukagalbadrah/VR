@@ -1,17 +1,784 @@
 <!DOCTYPE html>
-<html>
+<html lang="mn">
 <head>
-<meta charset="utf-8">
-<title>Virtual Lab</title>
-
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Хичээлийн Лаборатор</title>
 <style>
-    body{margin:0; overflow:hidden;}
-</style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d0d1a; font-family: sans-serif; overflow: hidden; }
+  #container { width: 100vw; height: 100vh; position: relative; }
+  canvas { width: 100%; height: 100%; display: block; }
+  #info {
+    position: absolute; top: 12px; left: 12px; color: #fff;
+    font-size: 12px; background: rgba(0,0,0,0.6);
+    padding: 8px 12px; border-radius: 8px; line-height: 2;
+  }
+  #legend {
+    position: absolute; top: 12px; right: 12px; color: #fff;
+    font-size: 12px; background: rgba(0,0,0,0.6);
+    padding: 8px 12px; border-radius: 8px; line-height: 2.2;
+  }
+  #btns {
+    position: absolute; bottom: 20px; left: 50%;
+    transform: translateX(-50%); display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
+  }
+  #btns button {
+    border: none; color: #fff; padding: 9px 20px;
+    border-radius: 8px; font-size: 13px; cursor: pointer;
+    font-weight: 500; transition: opacity 0.2s;
+  }
+  #btns button:hover { opacity: 0.85; }
 
+  /* TV / Audio Player Overlay */
+  #tvOverlay {
+    display: none; position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(5,10,25,0.97); border-radius: 16px;
+    padding: 22px 24px; color: #fff; text-align: center;
+    width: 500px; max-width: 94vw; z-index: 30;
+    border: 1px solid rgba(99,102,241,0.3);
+    box-shadow: 0 0 50px rgba(99,102,241,0.2), 0 0 80px rgba(0,0,0,0.8);
+  }
+  #tvOverlay h3 { font-size: 15px; font-weight: 600; margin-bottom: 14px; color: #a5b4fc; letter-spacing: 0.5px; }
+  #fileInputArea { margin-bottom: 12px; }
+  #fileInputArea label {
+    display: inline-block; cursor: pointer;
+    background: rgba(99,102,241,0.7); color: #fff;
+    padding: 8px 20px; border-radius: 8px; font-size: 13px;
+    border: 1px solid rgba(165,180,252,0.3); transition: opacity 0.2s;
+  }
+  #fileInputArea label:hover { opacity: 0.85; }
+  #fileInputArea input { display: none; }
+  #tvProgress {
+    background: #1e1e3a; border-radius: 6px;
+    height: 6px; margin-bottom: 6px; overflow: hidden; cursor: pointer;
+  }
+  #tvBar { background: linear-gradient(90deg, #6366f1, #a78bfa); height: 100%; width: 0%; transition: width 0.1s; }
+  #tvTime { font-size: 11px; color: #6b7280; margin-bottom: 12px; }
+  #tvControls { display: flex; gap: 8px; justify-content: center; margin-bottom: 12px; }
+  #tvControls button {
+    background: rgba(99,102,241,0.2); border: 1px solid rgba(165,180,252,0.2);
+    color: #fff; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 15px;
+    transition: background 0.2s;
+  }
+  #tvControls button:hover { background: rgba(99,102,241,0.45); }
+  #tvControls #btnPlayPause { padding: 8px 22px; font-size: 13px; font-weight: 600; background: rgba(99,102,241,0.5); }
+  #tvOverlay > button.closeBtn {
+    background: transparent; border: 1px solid rgba(255,255,255,0.15);
+    color: #9ca3af; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 12px;
+  }
+  #playlist::-webkit-scrollbar { width: 4px; }
+  #playlist::-webkit-scrollbar-track { background: transparent; }
+  #playlist::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.4); border-radius: 2px; }
+  .pl-item {
+    padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px;
+    color: #9ca3af; transition: background 0.15s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .pl-item:hover { background: rgba(99,102,241,0.2); color: #fff; }
+  .pl-item.active { background: rgba(99,102,241,0.35); color: #a5b4fc; font-weight: 600; }
+
+  /* VR Overlay */
+  #vrOverlay {
+    display: none; position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%; background: rgba(0,0,0,0.75);
+    z-index: 20; align-items: center; justify-content: center; flex-direction: column;
+  }
+
+  /* Click hint */
+  #clickHint {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none; opacity: 0;
+    transition: opacity 0.3s;
+    background: rgba(0,0,0,0.7); color: #fff;
+    padding: 10px 18px; border-radius: 8px; font-size: 13px;
+    white-space: nowrap;
+  }
+</style>
 </head>
 <body>
+<div id="container">
+  <canvas id="c"></canvas>
 
-<script type="module" src="main.js"></script>
+  <div id="info">
+    🖱 Хулгана: эргүүлэх &nbsp;|&nbsp; Scroll: томруулах/жижигрүүлэх<br>
+    📺 Телевиз дээр дарж MP4 тоглуулах
+  </div>
 
+  <div id="legend">
+    <span style="color:#a5b4fc;">■</span> Телевиз (дарж нээх)<br>
+    <span style="color:#f59e0b;">■</span> Хаалга<br>
+    <span style="color:#fef08a;">■</span> Таазны гэрэл
+  </div>
+
+  <div id="btns">
+    <button id="btnDoor"  onclick="toggleDoor()"  style="background:rgba(245,158,11,0.9);">🚪 Хаалга нээх</button>
+    <button id="btnTV"    onclick="openTVOverlay()" style="background:rgba(99,102,241,0.9);">🎬 MP4 тоглуулах</button>
+    <button id="btnLight" onclick="toggleLight()" style="background:rgba(80,80,80,0.9);">💡 Гэрэл унтраах</button>
+    <button id="btnVR"    onclick="toggleVR()"    style="background:rgba(124,58,237,0.9);">🥽 VR горим</button>
+  </div>
+
+  <div id="clickHint">🎬 Дарж MP4 тоглуулах</div>
+
+  <!-- VR Overlay -->
+  <div id="vrOverlay" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);z-index:20;display:none;align-items:center;justify-content:center;flex-direction:column;">
+    <div style="color:#fff;font-size:22px;font-weight:600;margin-bottom:18px;">🥽 VR Горим</div>
+    <div id="vrStatus" style="color:#a78bfa;font-size:15px;margin-bottom:18px;">Сандал сонгоно уу...</div>
+
+    <!-- Chair selection buttons -->
+    <div id="vrChairSelect" style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-bottom:16px;">
+      <button onclick="vrSit('teacher')" id="btnVRSitTeacher" style="background:rgba(124,58,237,0.9);border:none;color:#fff;padding:10px 20px;border-radius:10px;font-size:14px;cursor:pointer;font-weight:600;">🪑 Багшийн сандал</button>
+      <button onclick="vrSit('s1')" style="background:rgba(59,130,246,0.85);border:none;color:#fff;padding:10px 20px;border-radius:10px;font-size:14px;cursor:pointer;font-weight:600;">🪑 Сурагч 1-р эгнээ зүүн</button>
+      <button onclick="vrSit('s2')" style="background:rgba(59,130,246,0.85);border:none;color:#fff;padding:10px 20px;border-radius:10px;font-size:14px;cursor:pointer;font-weight:600;">🪑 Сурагч 1-р эгнээ дунд</button>
+      <button onclick="vrSit('s3')" style="background:rgba(59,130,246,0.85);border:none;color:#fff;padding:10px 20px;border-radius:10px;font-size:14px;cursor:pointer;font-weight:600;">🪑 Сурагч 1-р эгнээ баруун</button>
+    </div>
+
+    <div style="display:flex;gap:14px;">
+      <button onclick="vrStand()" id="btnVRStand" style="background:rgba(16,185,129,0.9);border:none;color:#fff;padding:12px 28px;border-radius:10px;font-size:15px;cursor:pointer;font-weight:600;display:none;">🧍 Босох / Явах</button>
+      <button onclick="closeVR()" style="background:rgba(80,80,80,0.8);border:none;color:#fff;padding:12px 28px;border-radius:10px;font-size:15px;cursor:pointer;">✕ Гарах</button>
+    </div>
+  </div>
+
+  <!-- MP4 Video Player Overlay -->
+  <div id="tvOverlay">
+    <h3>🎬 MP4 Видео тоглуулагч</h3>
+
+    <!-- Video element -->
+    <video id="tvVideo" style="width:100%;border-radius:8px;background:#000;margin-bottom:10px;display:block;max-height:260px;" playsinline></video>
+
+    <!-- Track info -->
+    <div id="trackInfo" style="font-size:13px;color:#93c5fd;margin-bottom:10px;min-height:18px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">
+      🎬 MP4 файл сонгоно уу...
+    </div>
+
+    <!-- File input -->
+    <div id="fileInputArea">
+      <label for="fileInput">📂 MP4 файл сонгох</label>
+      <input type="file" id="fileInput" accept="video/mp4,video/*,.mp4,.webm,.mkv">
+    </div>
+
+    <!-- Progress bar -->
+    <div id="tvProgress" onclick="seekAudio(event)">
+      <div id="tvBar"></div>
+    </div>
+    <div id="tvTime">0:00 / 0:00</div>
+
+    <!-- Controls -->
+    <div id="tvControls">
+      <button onclick="audioPrev()" title="Өмнөх">⏮</button>
+      <button onclick="audioPlayPause()" id="btnPlayPause">▶ Тоглуулах</button>
+      <button onclick="audioNext()" title="Дараах">⏭</button>
+      <button onclick="audioMute()" id="btnMute">🔊</button>
+    </div>
+
+    <!-- Playlist -->
+    <div id="playlist" style="max-height:100px;overflow-y:auto;margin-bottom:10px;text-align:left;"></div>
+
+    <button class="closeBtn" onclick="closeTV()">✕ Хаах</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ─────────────────────────────────────────────
+//  RENDERER & SCENE SETUP
+// ─────────────────────────────────────────────
+const canvas   = document.getElementById('c');
+const W = window.innerWidth, H = window.innerHeight;
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setSize(W, H);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+const scene  = new THREE.Scene();
+scene.background = new THREE.Color(0x0d0d1a);
+scene.fog        = new THREE.Fog(0x0d0d1a, 22, 45);
+
+const camera = new THREE.PerspectiveCamera(55, W / H, 0.1, 100);
+camera.position.set(0, 6, 12);
+camera.lookAt(0, 1.5, 0);
+
+window.addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+// ─────────────────────────────────────────────
+//  LIGHTING
+// ─────────────────────────────────────────────
+const ambient = new THREE.AmbientLight(0xffffff, 0.25);
+scene.add(ambient);
+
+let mainLight = new THREE.SpotLight(0xfff5e0, 2.5, 18, Math.PI / 3, 0.4);
+mainLight.position.set(0, 4.9, 0);
+mainLight.target.position.set(0, 0, 0);
+mainLight.castShadow = true;
+mainLight.shadow.mapSize.width  = 1024;
+mainLight.shadow.mapSize.height = 1024;
+scene.add(mainLight, mainLight.target);
+
+let lightOn = true;
+
+// ─────────────────────────────────────────────
+//  HELPERS
+// ─────────────────────────────────────────────
+const roomW = 10, roomH = 5, roomD = 10;
+
+function mat(color, rough = 0.85, metal = 0) {
+  return new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal });
+}
+function box(w, h, d, color, rough, metal) {
+  return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color, rough, metal));
+}
+
+// ─────────────────────────────────────────────
+//  ROOM
+// ─────────────────────────────────────────────
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomD), mat(0x7a6240, 0.9));
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+for (let i = -4; i <= 4; i++) {
+  const v = new THREE.Mesh(new THREE.PlaneGeometry(0.02, roomD), new THREE.MeshStandardMaterial({ color: 0x5a4520 }));
+  v.rotation.x = -Math.PI / 2; v.position.set(i, 0.001, 0); scene.add(v);
+  const h2 = new THREE.Mesh(new THREE.PlaneGeometry(roomW, 0.02), new THREE.MeshStandardMaterial({ color: 0x5a4520 }));
+  h2.rotation.x = -Math.PI / 2; h2.position.set(0, 0.001, i); scene.add(h2);
+}
+
+const wm = mat(0xc8bfa8, 0.9);
+const wallBack = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomH), wm);
+wallBack.position.set(0, roomH / 2, -roomD / 2); wallBack.receiveShadow = true; scene.add(wallBack);
+
+const wallFront = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomH), mat(0xbdb099, 0.9));
+wallFront.rotation.y = Math.PI; wallFront.position.set(0, roomH / 2, roomD / 2); scene.add(wallFront);
+
+const wallLeft = new THREE.Mesh(new THREE.PlaneGeometry(roomD, roomH), mat(0xc4bb9f, 0.9));
+wallLeft.rotation.y = Math.PI / 2; wallLeft.position.set(-roomW / 2, roomH / 2, 0); scene.add(wallLeft);
+
+const wallRight = new THREE.Mesh(new THREE.PlaneGeometry(roomD, roomH), mat(0xc4bb9f, 0.9));
+wallRight.rotation.y = -Math.PI / 2; wallRight.position.set(roomW / 2, roomH / 2, 0); scene.add(wallRight);
+
+const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(roomW, roomD), mat(0xe8e0d0, 0.9));
+ceiling.rotation.x = Math.PI / 2; ceiling.position.y = roomH; scene.add(ceiling);
+
+const fixture = box(2, 0.06, 0.5, 0xf8f0d0, 0.3);
+fixture.position.set(0, roomH - 0.04, 0); scene.add(fixture);
+
+// ─────────────────────────────────────────────
+//  MAIN TV (replaces whiteboard — back wall center)
+// ─────────────────────────────────────────────
+const mainTvG = new THREE.Group();
+
+// TV body
+const mainTvBody = box(5.2, 3.1, 0.12, 0x0d0d0d, 0.2, 0.6);
+mainTvG.add(mainTvBody);
+
+// Screen bezel
+const mainTvBezel = box(5.0, 2.9, 0.05, 0x111111, 0.15, 0.5);
+mainTvBezel.position.z = -0.035;
+mainTvG.add(mainTvBezel);
+
+// Screen surface (clickable) — idle dark screen
+const mainTvScreenMat = new THREE.MeshStandardMaterial({
+  color: 0x050d1a, roughness: 0.05, metalness: 0.1,
+  emissive: 0x0a1630, emissiveIntensity: 0.5
+});
+const mainTvScreen = new THREE.Mesh(new THREE.BoxGeometry(4.8, 2.7, 0.02), mainTvScreenMat);
+mainTvScreen.position.z = -0.05;
+mainTvScreen.name = 'mainTvScreen';
+mainTvG.add(mainTvScreen);
+
+// Video texture plane — shown on 3D TV when playing
+let videoTexture = null;
+const mainTvVideoMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+const mainTvVideoPlane = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 2.5), mainTvVideoMat);
+mainTvVideoPlane.position.z = -0.04;
+mainTvVideoPlane.visible = false;
+mainTvG.add(mainTvVideoPlane);
+
+// Stand pole
+const mainTvPole = box(0.15, 0.6, 0.15, 0x111111, 0.3, 0.6);
+mainTvPole.position.set(0, -1.85, 0);
+mainTvG.add(mainTvPole);
+
+// Stand base
+const mainTvBase = box(1.2, 0.06, 0.5, 0x111111, 0.3, 0.6);
+mainTvBase.position.set(0, -2.18, 0);
+mainTvG.add(mainTvBase);
+
+// Wall mount bracket
+const bracket = box(0.4, 0.08, 0.2, 0x333333, 0.4, 0.5);
+bracket.position.set(0, 0, 0.07);
+mainTvG.add(bracket);
+
+// Position: center of back wall, raised
+mainTvG.position.set(0, 2.9, -roomD / 2 + 0.1);
+scene.add(mainTvG);
+
+// TV glow light
+let mainTvLight = new THREE.PointLight(0x1d4ed8, 1.5, 8);
+mainTvLight.position.set(0, 2.9, -roomD / 2 + 1.0);
+scene.add(mainTvLight);
+
+// Raycaster for TV click
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+// (жижиг зурагт хасагдсан)
+
+// ─────────────────────────────────────────────
+//  STUDENT DESKS
+// ─────────────────────────────────────────────
+function addDesk(x, z) {
+  const dm = mat(0x8B6914, 0.7), lm = mat(0x2a2a2a, 0.4, 0.4);
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.05, 0.6), dm);
+  top.position.set(x, 0.75, z); top.castShadow = top.receiveShadow = true; scene.add(top);
+  [[0.45, 0.27],[0.45,-0.27],[-0.45,0.27],[-0.45,-0.27]].forEach(([dx,dz]) => {
+    const l = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.75, 0.05), lm);
+    l.position.set(x + dx, 0.375, z + dz); l.castShadow = true; scene.add(l);
+  });
+  const seatZ = z + 0.58;
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.45), dm);
+  seat.position.set(x, 0.46, seatZ); seat.castShadow = seat.receiveShadow = true; scene.add(seat);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.38, 0.04), dm);
+  back.position.set(x, 0.67, seatZ + 0.205); back.castShadow = true; scene.add(back);
+  [[0.21, 0.19],[0.21,-0.19],[-0.21,0.19],[-0.21,-0.19]].forEach(([dx,dz]) => {
+    const sl = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.46, 0.04), lm);
+    sl.position.set(x + dx, 0.23, seatZ + dz); sl.castShadow = true; scene.add(sl);
+  });
+}
+[[-2,1],[-2,-1],[-2,-3],[0,1],[0,-1],[0,-3],[2,1],[2,-1],[2,-3]].forEach(([x,z]) => addDesk(x, z));
+
+// ─────────────────────────────────────────────
+//  TEACHER DESK
+// ─────────────────────────────────────────────
+const td = box(2.2, 0.07, 0.85, 0x5d3a0a, 0.6);
+td.position.set(-2.5, 0.78, 3.5); td.castShadow = td.receiveShadow = true; scene.add(td);
+[[1.05,0.375],[-1.05,0.375],[1.05,-0.375],[-1.05,-0.375]].forEach(([dx,dz]) => {
+  const l = box(0.07, 0.78, 0.07, 0x1a1a1a, 0.3, 0.4);
+  l.position.set(-2.5 + dx, 0.39, 3.5 + dz); l.castShadow = true; scene.add(l);
+});
+
+// Teacher chair (group for VR interaction)
+const tcGroup = new THREE.Group();
+tcGroup.position.set(-2.5, 0, 4.4);
+scene.add(tcGroup);
+const tcSeat = box(0.55, 0.05, 0.5, 0x1a3a6e, 0.6);
+tcSeat.position.set(0, 0.5, 0); tcGroup.add(tcSeat);
+const tcBack = box(0.55, 0.5, 0.05, 0x1a3a6e, 0.6);
+tcBack.position.set(0, 0.77, 0.25); tcGroup.add(tcBack);
+[[0.24,0.21],[0.24,-0.21],[-0.24,0.21],[-0.24,-0.21]].forEach(([dx,dz]) => {
+  const cl = box(0.05, 0.5, 0.05, 0x0a1a3a, 0.4, 0.3);
+  cl.position.set(dx, 0.25, dz); cl.castShadow = true; tcGroup.add(cl);
+});
+const ar1 = box(0.04, 0.04, 0.35, 0x0a1a3a, 0.4, 0.3);
+ar1.position.set(0.3, 0.65, 0); tcGroup.add(ar1);
+const ar2 = box(0.04, 0.04, 0.35, 0x0a1a3a, 0.4, 0.3);
+ar2.position.set(-0.3, 0.65, 0); tcGroup.add(ar2);
+
+// Book
+const book = box(0.35, 0.04, 0.25, 0x8b1a1a, 0.7);
+book.position.set(-2.0, 0.83, 3.5); scene.add(book);
+const bookPage = box(0.33, 0.02, 0.23, 0xf5f0e0, 0.8);
+bookPage.position.set(-2.0, 0.86, 3.5); scene.add(bookPage);
+// Laptop
+const laptop = box(0.4, 0.02, 0.3, 0x777777, 0.3, 0.6);
+laptop.position.set(-3.2, 0.83, 3.5); scene.add(laptop);
+const lapScreen = box(0.38, 0.28, 0.01, 0x1a1a2e, 0.2);
+lapScreen.position.set(-3.2, 0.97, 3.36); lapScreen.rotation.x = -Math.PI / 5; scene.add(lapScreen);
+
+// ─────────────────────────────────────────────
+//  DOOR (LEFT WALL) — OPENABLE
+// ─────────────────────────────────────────────
+const doorGroup = new THREE.Group();
+const fTop2 = box(1.0, 0.12, 0.18, 0x4a2e0f, 0.6);
+fTop2.position.set(0, 2.12, 0); doorGroup.add(fTop2);
+const fL2 = box(0.12, 2.1, 0.18, 0x4a2e0f, 0.6);
+fL2.position.set(-0.44, 1.05, 0); doorGroup.add(fL2);
+const fR2 = box(0.12, 2.1, 0.18, 0x4a2e0f, 0.6);
+fR2.position.set(0.44, 1.05, 0); doorGroup.add(fR2);
+
+const doorPivot = new THREE.Group();
+doorPivot.position.set(-0.38, 0, 0);
+const panel = new THREE.Mesh(new THREE.BoxGeometry(0.76, 2.0, 0.07), mat(0x7a4a22, 0.5));
+panel.position.set(0.38, 1.0, 0); panel.castShadow = true; doorPivot.add(panel);
+const d1 = box(0.6, 0.75, 0.02, 0x6a3a18, 0.5);
+d1.position.set(0.38, 1.52, 0.045); doorPivot.add(d1);
+const d2 = box(0.6, 0.75, 0.02, 0x6a3a18, 0.5);
+d2.position.set(0.38, 0.52, 0.045); doorPivot.add(d2);
+const hMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.1, metalness: 0.95 });
+const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.13, 8), hMat);
+handle.rotation.x = Math.PI / 2; handle.position.set(0.7, 1.0, 0.05); doorPivot.add(handle);
+const hPlate = box(0.06, 0.14, 0.02, 0xd4af37, 0.1, 0.95);
+hPlate.position.set(0.72, 1.0, 0.04); doorPivot.add(hPlate);
+doorGroup.add(doorPivot);
+doorGroup.position.set(-roomW / 2 + 0.09, 0, -1.0);
+doorGroup.rotation.y = -Math.PI / 2;
+scene.add(doorGroup);
+
+let doorOpen = false, doorTarget = 0, doorCurrent = 0;
+function toggleDoor() {
+  doorOpen = !doorOpen;
+  doorTarget = doorOpen ? -Math.PI * 0.75 : 0;
+  document.getElementById('btnDoor').textContent = doorOpen ? '🚪 Хаалга хаах' : '🚪 Хаалга нээх';
+  document.getElementById('btnDoor').style.background = doorOpen ? 'rgba(239,68,38,0.9)' : 'rgba(245,158,11,0.9)';
+}
+
+// ─────────────────────────────────────────────
+//  DECORATIONS
+// ─────────────────────────────────────────────
+function addPlant(x, z) {
+  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.12, 0.3, 8), mat(0x8b4513, 0.8));
+  pot.position.set(x, 0.15, z); scene.add(pot);
+  const bush = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), mat(0x2d7a2d, 0.9));
+  bush.position.set(x, 0.55, z); scene.add(bush);
+}
+addPlant(-4.6, -4.6); addPlant(4.6, -4.6);
+
+const clockBase = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.04, 16), mat(0xffffff, 0.5));
+clockBase.rotation.x = Math.PI / 2; clockBase.position.set(4.2, 3.8, -4.9); scene.add(clockBase);
+const clockRim = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.02, 8, 16), mat(0x333333, 0.4, 0.3));
+clockRim.position.set(4.2, 3.8, -4.9); scene.add(clockRim);
+const secHand = box(0.01, 0.18, 0.01, 0xff0000, 0.5);
+secHand.position.set(4.2, 3.8, -4.87); scene.add(secHand);
+
+// ─────────────────────────────────────────────
+//  LIGHT TOGGLE
+// ─────────────────────────────────────────────
+function toggleLight() {
+  lightOn = !lightOn;
+  mainLight.intensity = lightOn ? 2.5 : 0;
+  ambient.intensity   = lightOn ? 0.25 : 0.05;
+  document.getElementById('btnLight').textContent = lightOn ? '💡 Гэрэл унтраах' : '💡 Гэрэл асаах';
+}
+
+// ─────────────────────────────────────────────
+//  MP4 VIDEO PLAYER LOGIC
+// ─────────────────────────────────────────────
+const videoEl = document.getElementById('tvVideo');
+let tvPlaying = false;
+let playlist = [], currentIdx = 0;
+
+const fileInput = document.getElementById('fileInput');
+
+function setupVideoTexture() {
+  if (videoTexture) { videoTexture.dispose(); }
+  videoTexture = new THREE.VideoTexture(videoEl);
+  videoTexture.minFilter = THREE.LinearFilter;
+  videoTexture.magFilter = THREE.LinearFilter;
+  videoTexture.format = THREE.RGBAFormat;
+  mainTvVideoMat.map = videoTexture;
+  mainTvVideoMat.color.set(0xffffff);
+  mainTvVideoMat.needsUpdate = true;
+  mainTvVideoPlane.visible = true;
+  mainTvScreenMat.emissiveIntensity = 0.05;
+}
+
+fileInput.addEventListener('change', (e) => {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+  playlist = files.map(f => ({ name: f.name.replace(/\.[^.]+$/, ''), url: URL.createObjectURL(f) }));
+  currentIdx = 0;
+  renderPlaylist();
+  loadTrack(0);
+  videoEl.play().catch(() => {});
+  tvPlaying = true; updatePlayBtn(); updateTVGlow(true);
+});
+
+function renderPlaylist() {
+  const pl = document.getElementById('playlist');
+  pl.innerHTML = playlist.map((t, i) =>
+    `<div class="pl-item${i===currentIdx?' active':''}" onclick="playTrack(${i})">
+      ${i===currentIdx?'▶ ':''}${t.name}
+    </div>`
+  ).join('');
+}
+
+function playTrack(idx) {
+  loadTrack(idx);
+  videoEl.play().catch(() => {});
+  tvPlaying = true; updatePlayBtn(); updateTVGlow(true);
+}
+
+function loadTrack(idx) {
+  currentIdx = idx;
+  videoEl.src = playlist[idx].url;
+  videoEl.load();
+  setupVideoTexture();
+  document.getElementById('trackInfo').textContent = '🎬 ' + playlist[idx].name;
+  renderPlaylist();
+}
+
+videoEl.addEventListener('timeupdate', () => {
+  if (!videoEl.duration) return;
+  const pct = (videoEl.currentTime / videoEl.duration) * 100;
+  document.getElementById('tvBar').style.width = pct + '%';
+  const fmt = s => Math.floor(s/60) + ':' + String(Math.floor(s%60)).padStart(2,'0');
+  document.getElementById('tvTime').textContent = fmt(videoEl.currentTime) + ' / ' + fmt(videoEl.duration);
+  if (videoTexture) videoTexture.needsUpdate = true;
+});
+
+videoEl.addEventListener('ended', () => {
+  if (currentIdx < playlist.length - 1) { playTrack(currentIdx + 1); }
+  else {
+    tvPlaying = false; updatePlayBtn(); updateTVGlow(false);
+    mainTvVideoPlane.visible = false;
+    mainTvScreenMat.emissiveIntensity = 0.5;
+  }
+});
+
+function audioPlayPause() {
+  if (videoEl.paused) { videoEl.play().catch(()=>{}); tvPlaying = true; }
+  else { videoEl.pause(); tvPlaying = false; }
+  updatePlayBtn(); updateTVGlow(tvPlaying);
+}
+
+function audioPrev() {
+  if (!playlist.length) return;
+  playTrack((currentIdx - 1 + playlist.length) % playlist.length);
+}
+
+function audioNext() {
+  if (!playlist.length) return;
+  playTrack((currentIdx + 1) % playlist.length);
+}
+
+function audioMute() {
+  videoEl.muted = !videoEl.muted;
+  document.getElementById('btnMute').textContent = videoEl.muted ? '🔇' : '🔊';
+}
+
+function seekAudio(e) {
+  if (!videoEl.duration) return;
+  const bar = document.getElementById('tvProgress');
+  const rect = bar.getBoundingClientRect();
+  videoEl.currentTime = ((e.clientX - rect.left) / rect.width) * videoEl.duration;
+}
+
+function updatePlayBtn() {
+  document.getElementById('btnPlayPause').textContent = tvPlaying ? '⏸ Зогсоох' : '▶ Тоглуулах';
+}
+
+function updateTVGlow(on) {
+  mainTvLight.intensity = on ? 3.5 : 1.5;
+  mainTvLight.color.set(on ? 0x8866ff : 0x1d4ed8);
+}
+
+function openTVOverlay() {
+  document.getElementById('tvOverlay').style.display = 'block';
+}
+
+function closeTV() {
+  document.getElementById('tvOverlay').style.display = 'none';
+}
+
+// ─────────────────────────────────────────────
+//  CLICK ON MAIN TV SCREEN (3D raycasting)
+// ─────────────────────────────────────────────
+const hint = document.getElementById('clickHint');
+let hintTimeout = null;
+
+canvas.addEventListener('click', (e) => {
+  if (vrActive) return;
+  mouse.x =  (e.clientX / window.innerWidth)  * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(mainTvG.children, true);
+  if (hits.length > 0) {
+    openTVOverlay();
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (vrActive) return;
+  mouse.x =  (e.clientX / window.innerWidth)  * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(mainTvG.children, true);
+  if (hits.length > 0) {
+    canvas.style.cursor = 'pointer';
+    hint.style.opacity = '1';
+    hint.style.left = (e.clientX + 12) + 'px';
+    hint.style.top  = (e.clientY - 10) + 'px';
+    hint.style.transform = 'none';
+  } else {
+    canvas.style.cursor = '';
+    hint.style.opacity = '0';
+  }
+});
+
+// ─────────────────────────────────────────────
+//  CAMERA ORBIT CONTROLS
+// ─────────────────────────────────────────────
+let isDragging = false, lastX = 0, lastY = 0;
+let theta = 0.15, phi = 0.55, radius = 12;
+
+canvas.addEventListener('mousedown',  e => { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
+canvas.addEventListener('mouseup',    () => isDragging = false);
+canvas.addEventListener('mouseleave', () => isDragging = false);
+canvas.addEventListener('mousemove',  e => {
+  if (!isDragging) return;
+  theta -= (e.clientX - lastX) * 0.008;
+  phi    = Math.max(0.1, Math.min(1.4, phi + (e.clientY - lastY) * 0.008));
+  lastX  = e.clientX; lastY = e.clientY;
+});
+canvas.addEventListener('wheel', e => {
+  radius = Math.max(5, Math.min(20, radius + e.deltaY * 0.02));
+  e.preventDefault();
+}, { passive: false });
+canvas.addEventListener('touchstart', e => { isDragging = true; lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; });
+canvas.addEventListener('touchend',   () => isDragging = false);
+canvas.addEventListener('touchmove',  e => {
+  if (!isDragging) return;
+  theta -= (e.touches[0].clientX - lastX) * 0.008;
+  phi    = Math.max(0.1, Math.min(1.4, phi + (e.touches[0].clientY - lastY) * 0.008));
+  lastX  = e.touches[0].clientX; lastY = e.touches[0].clientY;
+});
+
+// ─────────────────────────────────────────────
+//  VR MODE — ОЛОН САНДАЛ ДЭМЖЛЭГ
+// ─────────────────────────────────────────────
+let vrActive = false, vrSitting = false;
+let vrCamTarget = null, vrCamCurrent = null;
+
+// Chair positions: teacher + 3 student chairs (front row)
+const VR_CHAIRS = {
+  teacher: {
+    sitPos:   new THREE.Vector3(-2.5, 1.4, 4.1),
+    sitLook:  new THREE.Vector3(0, 2.0, -4),
+    standPos: new THREE.Vector3(-2.5, 1.7, 4.8),
+    standLook:new THREE.Vector3(0, 1.5, 0),
+    label: '🪑 Багшийн сандал дээр суулаа!'
+  },
+  s1: {
+    sitPos:   new THREE.Vector3(-2, 1.4, 0.58),
+    sitLook:  new THREE.Vector3(0, 2.0, -4),
+    standPos: new THREE.Vector3(-2, 1.7, 1.2),
+    standLook:new THREE.Vector3(0, 1.5, 0),
+    label: '🪑 1-р эгнээ зүүн сандал дээр суулаа!'
+  },
+  s2: {
+    sitPos:   new THREE.Vector3(0, 1.4, 0.58),
+    sitLook:  new THREE.Vector3(0, 2.0, -4),
+    standPos: new THREE.Vector3(0, 1.7, 1.2),
+    standLook:new THREE.Vector3(0, 1.5, 0),
+    label: '🪑 1-р эгнээ дунд сандал дээр суулаа!'
+  },
+  s3: {
+    sitPos:   new THREE.Vector3(2, 1.4, 0.58),
+    sitLook:  new THREE.Vector3(0, 2.0, -4),
+    standPos: new THREE.Vector3(2, 1.7, 1.2),
+    standLook:new THREE.Vector3(0, 1.5, 0),
+    label: '🪑 1-р эгнээ баруун сандал дээр суулаа!'
+  }
+};
+
+let currentChair = 'teacher';
+let savedTheta, savedPhi, savedRadius;
+
+function toggleVR() {
+  if (vrActive) { closeVR(); return; }
+  vrActive = true;
+  savedTheta = theta; savedPhi = phi; savedRadius = radius;
+  document.getElementById('vrOverlay').style.display = 'flex';
+  document.getElementById('info').style.display = 'none';
+  document.getElementById('vrStatus').textContent = 'Сандал сонгоно уу...';
+  document.getElementById('vrChairSelect').style.display = 'flex';
+  document.getElementById('btnVRStand').style.display = 'none';
+  document.getElementById('btnVR').textContent = '🥽 VR гарах';
+}
+
+function vrSit(chairKey) {
+  vrSitting = true;
+  currentChair = chairKey || 'teacher';
+  const ch = VR_CHAIRS[currentChair];
+  document.getElementById('vrStatus').textContent = ch.label;
+  document.getElementById('vrChairSelect').style.display = 'none';
+  document.getElementById('btnVRStand').style.display = '';
+  isDragging = false;
+  animateVRCamera(ch.sitPos, ch.sitLook);
+}
+
+function vrStand() {
+  vrSitting = false;
+  const ch = VR_CHAIRS[currentChair];
+  document.getElementById('vrStatus').textContent = '🧍 Та бослоо — орчноо харна уу!';
+  document.getElementById('btnVRStand').style.display = 'none';
+  document.getElementById('vrChairSelect').style.display = 'flex';
+  animateVRCamera(ch.standPos, ch.standLook);
+}
+
+function closeVR() {
+  vrActive = false; vrSitting = false;
+  document.getElementById('vrOverlay').style.display = 'none';
+  document.getElementById('info').style.display = '';
+  document.getElementById('btnVR').textContent = '🥽 VR горим';
+  theta = savedTheta; phi = savedPhi; radius = savedRadius;
+}
+
+let vrLerpActive = false, vrLerpFrom = null, vrLerpTo = null, vrLookTo = null, vrLerpT = 0;
+function animateVRCamera(toPos, toLook) {
+  vrLerpFrom = camera.position.clone();
+  vrLerpTo = toPos.clone();
+  vrLookTo = toLook.clone();
+  vrLerpT = 0;
+  vrLerpActive = true;
+}
+
+// ─────────────────────────────────────────────
+//  RENDER LOOP
+// ─────────────────────────────────────────────
+let t = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  t += 0.016;
+
+  // Animate door
+  const diff = doorTarget - doorCurrent;
+  if (Math.abs(diff) > 0.005) doorCurrent += diff * 0.08;
+  doorPivot.rotation.y = doorCurrent;
+
+  // Main TV screen glow pulse
+  mainTvScreenMat.emissiveIntensity = mainTvVideoPlane.visible ? 0.05 : (0.4 + Math.sin(t * 1.2) * 0.08);
+  if (tvPlaying) {
+    mainTvLight.intensity = 2.8 + Math.sin(t * 6) * 0.5;
+    if (videoTexture) videoTexture.needsUpdate = true;
+  }
+
+  // Clock second hand
+  const s = new Date().getSeconds();
+  secHand.rotation.z = -(s / 60) * Math.PI * 2;
+
+  // Camera
+  if (!vrActive) {
+    camera.position.x = radius * Math.sin(theta) * Math.sin(phi);
+    camera.position.y = radius * Math.cos(phi) + 1.5;
+    camera.position.z = radius * Math.cos(theta) * Math.sin(phi);
+    camera.lookAt(0, 1.5, 0);
+  } else if (vrLerpActive) {
+    vrLerpT = Math.min(vrLerpT + 0.03, 1);
+    const ease = 1 - Math.pow(1 - vrLerpT, 3);
+    camera.position.lerpVectors(vrLerpFrom, vrLerpTo, ease);
+    camera.lookAt(vrLookTo);
+    if (vrLerpT >= 1) vrLerpActive = false;
+  } else if (vrSitting) {
+    const ch = VR_CHAIRS[currentChair];
+    camera.position.copy(ch.sitPos);
+    camera.lookAt(ch.sitLook.x + Math.sin(theta) * 2, ch.sitLook.y + (phi - 0.55) * 0.5, ch.sitLook.z);
+  } else if (vrActive) {
+    const ch = VR_CHAIRS[currentChair];
+    camera.position.copy(ch.standPos);
+    camera.lookAt(ch.standLook.x + Math.sin(theta) * 3, ch.standLook.y, ch.standLook.z + Math.cos(theta));
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+</script>
 </body>
 </html>
